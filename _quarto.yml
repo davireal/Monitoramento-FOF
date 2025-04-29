@@ -1,0 +1,18 @@
+project:
+  type: website
+  output-dir: docs
+
+website: 
+  title: "Monitoramento FOF"
+  navbar: 
+    left:
+      - text: "REFIX"
+        href: refix.qmd
+      - text: "RV"
+        href: fof_rv.qmd
+      - text: "MM"
+        href: fof_mm.qmd        
+      - text: "HEDGE"
+        href: hedge.qmd
+format:
+  dashboard

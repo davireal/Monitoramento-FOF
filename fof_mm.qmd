@@ -1,0 +1,2049 @@
+---
+format: dashboard
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r, include=FALSE, echo = FALSE}
+library(httr)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(tidyverse)
+library(readxl)
+library(reactable)
+library(lubridate)
+library(quantmod)
+library(leaflet)
+```
+
+```{r, include=FALSE, echo = FALSE}
+Cotas_Consolidadores <- read_excel("C:/Users/dreal/Downloads/Cotas Consolidadores.xlsx", 
+col_types = c("date", "numeric", "numeric", "numeric", "numeric"), na = "0")
+
+colnames(Cotas_Consolidadores) <- c("Data", "FOF MM", "REFIX", "FOF RV", "FOF HEDGE")
+Cotas_Consolidadores <- Cotas_Consolidadores[, c("Data", "FOF MM")]
+
+PL_Consolidadores <- read_excel("C:/Users/dreal/Downloads/PL Consolidadores.xlsx", 
+col_types = c("date", "numeric", "numeric", "numeric", "numeric"), na = "0")
+
+colnames(PL_Consolidadores) <- c("Data", "FOF MM", "REFIX", "FOF RV", "FOF HEDGE")
+PL_Consolidadores <- PL_Consolidadores[, c("Data", "FOF MM")]
+
+Cotas_Benchmarks <- read_excel("C:/Users/dreal/Downloads/Cotas Benchmarks.xlsx", 
+col_types = c("date", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric"), na = "0")
+
+colnames(Cotas_Benchmarks) <- c("Data","CDI","DÓLAR","IBOV","IFMM","IHFA","IMAB","BSHY")
+Cotas_Benchmarks <- Cotas_Benchmarks[, c("Data", "CDI","IFMM","IHFA")]
+``` 
+
+```{r, include=FALSE, echo = FALSE}
+
+# Função para calcular a série de drawdowns em múltiplas colunas
+calcular_drawdowns <- function(df, colunas) {
+  df_drawdowns <- df
+  for (coluna in colunas) {
+    max_cotas <- cummax(df[[coluna]])  # Máximos acumulados
+    df_drawdowns[[paste0(coluna, "_Drawdown")]] <- ((df[[coluna]] / max_cotas) - 1)*100  # Cálculo do drawdown
+  }
+  
+  df_drawdowns[is.na(df_drawdowns)] <- 0
+  
+  return(df_drawdowns)
+}
+
+Drawdown_consolidadores <- calcular_drawdowns(Cotas_Consolidadores, colunas = c("FOF MM"))
+```
+
+```{r, include=FALSE, echo = FALSE}
+#Fazendo da maneira bruta, otimizar no FUTURO!!!
+
+# Nomes das colunas
+novos_nomes_fundos <- c("ABSOLUTE_ALPHA_GLOBAL", "ABSOLUTE_VERTEX", "ACE_CAPITAL", "CONSTANCIA",  "GAVEA_MACRO_PLUS", "GENOA", "GIANT_ZARATHUSTRA", "IBIUNA_HEDGE", "IBIUNA_LONG_SHORT", "JGP_STRATEGY", "KADIMA_HIGH_VOL", "KAPITALO_K10", "KAPITALO_ZETA", "LEGACY", "MAR", "OCCAM_EQUITY_HEDGE", "QUANTITAS", "REAL_INVESTOR", "SHARP_LONG_SHORT", "SOLANA", "SPX_NIMITZ"
+)
+novos_nomes_fundos_lp <- c("ABSOLUTE_ALPHA_GLOBAL", "ABSOLUTE_VERTEX", "ACE_CAPITAL", "CONSTANCIA",  "GAVEA_MACRO_PLUS", "GIANT_ZARATHUSTRA", "IBIUNA_HEDGE", "IBIUNA_LONG_SHORT", "JGP_STRATEGY", "KADIMA_HIGH_VOL", "KAPITALO_K10", "KAPITALO_ZETA", "LEGACY", "MAR", "OCCAM_EQUITY_HEDGE", "QUANTITAS", "REAL_INVESTOR", "SHARP_LONG_SHORT", "SOLANA", "SPX_NIMITZ"
+)
+
+# Base de Cotas
+cota_fundos_MM <- read_excel("C:/Users/dreal/Downloads/cota_fundos_MM.xlsx", 
+    col_types = c("date", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric"))
+colnames(cota_fundos_MM)[-1] <- novos_nomes_fundos  
+
+
+# Base de Drawdowns
+drawdown_fundos_MM <- read_excel("C:/Users/dreal/Downloads/drawdown_fundos_MM.xlsx", 
+    col_types = c("date", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric"))
+colnames(drawdown_fundos_MM)[-1] <- novos_nomes_fundos   
+
+# Base de PL
+pl_fundos_MM <- read_excel("C:/Users/dreal/Downloads/pl_fundos_MM.xlsx", 
+    col_types = c("date", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric"))
+colnames(pl_fundos_MM)[-1] <- novos_nomes_fundos  
+
+# Base de Ret 252
+ret_252_fundos_MM <- read_excel("C:/Users/dreal/Downloads/ret_252_fundos_MM.xlsx", 
+    col_types = c("date", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric"))
+colnames(ret_252_fundos_MM)[-1] <- novos_nomes_fundos  
+
+# Base de Ret 504
+ret_504_fundos_MM <- read_excel("C:/Users/dreal/Downloads/ret_504_fundos_MM.xlsx", 
+    col_types = c("date", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric"))
+colnames(ret_504_fundos_MM)[-1] <- novos_nomes_fundos
+
+# Base de Ret 756
+ret_756_fundos_MM <- read_excel("C:/Users/dreal/Downloads/ret_756_fundos_MM.xlsx", 
+    col_types = c("date", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric"))
+colnames(ret_756_fundos_MM)[-1] <- novos_nomes_fundos_lp
+
+# Base de Exc Ret 252
+exc_ret_252_fundos_MM <- read_excel("C:/Users/dreal/Downloads/exc_ret_252_fundos_MM.xlsx", 
+    col_types = c("date", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric"))
+colnames(exc_ret_252_fundos_MM)[-1] <- novos_nomes_fundos
+
+# Base de Exc Ret 504
+exc_ret_504_fundos_MM <- read_excel("C:/Users/dreal/Downloads/exc_ret_504_fundos_MM.xlsx", 
+    col_types = c("date", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric"))
+colnames(exc_ret_504_fundos_MM)[-1] <- novos_nomes_fundos
+
+# Base de Exc Ret 756
+exc_ret_756_fundos_MM <- read_excel("C:/Users/dreal/Downloads/exc_ret_756_fundos_MM.xlsx", 
+    col_types = c("date", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric"))
+colnames(exc_ret_756_fundos_MM)[-1] <- novos_nomes_fundos_lp
+
+# Base de Vol 63
+vol_63_fundos_MM <- read_excel("C:/Users/dreal/Downloads/vol_63_fundos_MM.xlsx", 
+    col_types = c("date", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric"))
+colnames(vol_63_fundos_MM)[-1] <- novos_nomes_fundos
+
+# Base de Vol 252
+vol_252_fundos_MM <- read_excel("C:/Users/dreal/Downloads/vol_252_fundos_MM.xlsx", 
+    col_types = c("date", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric"))
+colnames(vol_252_fundos_MM)[-1] <- novos_nomes_fundos
+
+# Base de VAR EWMA
+var_fundos_MM <- read_excel("C:/Users/dreal/Downloads/var_ewma_fundos_MM.xlsx", 
+    col_types = c("date", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric"))
+colnames(var_fundos_MM)[-1] <- novos_nomes_fundos_lp
+```
+
+```{r, include=FALSE, echo = FALSE}
+# Vetores
+novos_nomes_fundos <- c("ABSOLUTE_ALPHA_GLOBAL", "ABSOLUTE_VERTEX", "ACE_CAPITAL", "CONSTANCIA",  "GAVEA_MACRO_PLUS", "GENOA", "GIANT_ZARATHUSTRA", "IBIUNA_HEDGE", "IBIUNA_LONG_SHORT", "JGP_STRATEGY", "KADIMA_HIGH_VOL", "KAPITALO_K10", "KAPITALO_ZETA", "LEGACY", "MAR", "OCCAM_EQUITY_HEDGE", "QUANTITAS", "REAL_INVESTOR", "SHARP_LONG_SHORT", "SOLANA", "SPX_NIMITZ")
+
+índices <- c("ret_252","ret_504","ret_756","exc_ret_252","exc_ret_504","exc_ret_756","vol_63","vol_252","drawdown","var_ewma")
+
+x <- c("ret_252_fundos_MM","ret_504_fundos_MM","ret_756_fundos_MM",
+       "exc_ret_252_fundos_MM","exc_ret_504_fundos_MM","exc_ret_756_fundos_MM","vol_63_fundos_MM","vol_252_fundos_MM","drawdown_fundos_MM","var_fundos_MM")
+
+nomes_fundos_MM_limpos <- c("Absolute Alpha Global","Absolute Vertex","Ace","Constância","Gávea_Macro_Plus","Genoa","Giant",
+                            "Ibiuna Hedge","Ibiuna Long Short","Jgp Strategy","Kadima High Vol","Kapitalo K10","Kapitalo Zeta",
+                            "Legacy","Mar","Occam","Quantitas","Real Investor","Sharp Long Short","Solana","SPX Nimitz")
+
+# Estratégias
+table_macro_trading_MM <- c("Absolute Vertex","Ace","Genoa","Jgp Strategy","Kapitalo K10","Kapitalo Zeta","Legacy")
+table_macro_carregamento_MM <- c("Gávea_Macro_Plus","Ibiuna Hedge","Mar","Occam","Quantitas","SPX Nimitz")
+table_long_short_MM <- c("Constância","Ibiuna Long Short","Real Investor","Sharp Long Short","Solana")
+table_sistematico_MM <- c("Giant","Kadima High Vol")
+
+# Função que busca até 3 linhas acima da última válida
+extrair_linha_final_tratada <- function(nome_base, colunas_padrao) {
+  base <- get(nome_base)
+  n_linhas <- nrow(base)
+  linhas_para_buscar <- seq(n_linhas, max(1, n_linhas - 2))  # Última até no máximo 3 acima
+  
+  valores <- sapply(colunas_padrao, function(col) {
+    if (col %in% colnames(base)) {
+      valor_valido <- NA
+      for (i in linhas_para_buscar) {
+        valor_atual <- base[i, col]
+        if (!is.na(valor_atual)) {
+          valor_valido <- valor_atual
+          break
+        }
+      }
+      if (!is.na(valor_valido)) {
+        as.character(valor_valido)
+      } else {
+        "-"
+      }
+    } else {
+      "-"
+    }
+  })
+  return(valores)
+}
+
+# Aplica a função para cada base
+matriz_resultado <- t(sapply(x, extrair_linha_final_tratada, colunas_padrao = novos_nomes_fundos))
+
+# Define nomes
+rownames(matriz_resultado) <- índices
+colnames(matriz_resultado) <- novos_nomes_fundos
+
+# Converte para data.frame e transpõe
+df_transposto <- as.data.frame(t(matriz_resultado))
+rownames(df_transposto) <- nomes_fundos_MM_limpos
+colnames(df_transposto) <- c("Ret 252","Ret 504","Ret 756","Exc Ret 252","Exc Ret 504","Exc Ret 756","Vol 63","Vol 252","Drawdown","VAR")
+
+# Arredonda e multiplica por 100 (exceto cota e pl)
+colunas_para_multiplicar <- colnames(df_transposto)
+
+for (col in colunas_para_multiplicar) {
+  df_transposto[[col]] <- sapply(df_transposto[[col]], function(valor) {
+    if (!is.na(valor) && valor != "-") {
+      valor_num <- as.numeric(valor)
+      format(round(valor_num * 100, 2), nsmall = 2)
+    } else {
+      "-"
+    }
+  })
+}
+
+# Cria os subconjuntos por estratégia
+df_macro_trading <- df_transposto[rownames(df_transposto) %in% table_macro_trading_MM, ]
+df_macro_carregamento <- df_transposto[rownames(df_transposto) %in% table_macro_carregamento_MM, ]
+df_long_short <- df_transposto[rownames(df_transposto) %in% table_long_short_MM, ]
+df_sistematico <- df_transposto[rownames(df_transposto) %in% table_sistematico_MM, ]
+```
+
+
+# Consolidador
+
+## Row
+
+:::{.card}
+<h1>FOF MM</h1>
+<div style="font-size: 1.1em;">
+  <p><strong>AUM</strong>: 600 Mi</p>
+  <p><strong>Sub-Estratégias</strong>: 5</p>
+  <p><strong>Estratégias</strong>: 10</p>
+  <p><strong>Prateleira</strong>: 11</p>
+  <p><strong>Benchmark</strong>: CDI</p>
+  <p><strong>Data de Início</strong>: 08/03/2023</p>
+  <p><strong>Responsável</strong>: Arthur Paolucci</p>
+</div>
+:::
+
+```{r, include=TRUE, echo = FALSE}
+      # Gráfico de rentabilidade acumulada FOF MM
+      plot_ly(Cotas_Consolidadores, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = Cotas_Consolidadores$Data,
+          y = Cotas_Consolidadores$`FOF MM`,
+          name = 'FOF MM'
+        ) %>%
+        add_trace(
+          x = Cotas_Benchmarks$Data,
+          y = Cotas_Benchmarks$CDI,
+          name = 'CDI'
+        ) %>%
+        add_trace(
+          x = Cotas_Benchmarks$Data,
+          y = Cotas_Benchmarks$IFMM,
+          name = 'IFMM'
+        ) %>%
+        add_trace(
+          x = Cotas_Benchmarks$Data,
+          y = Cotas_Benchmarks$IHFA,
+          name = 'IHFA'
+        ) %>%        
+        layout(
+          title = 'Rentabilidade acumulada',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+## Row
+
+```{r, include=TRUE, echo = FALSE}
+      # Gráfico de patrimônio líquido para FOF MM
+      plot_ly(PL_Consolidadores, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = PL_Consolidadores$Data,
+          y = PL_Consolidadores$`FOF MM`,
+          name = 'FOF MM'
+        ) %>%
+        layout(
+          title = 'Patrimônio Líquido',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Milhares'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+      # Gráfico de drawdown para FOF MM
+      plot_ly(Drawdown_consolidadores, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = Drawdown_consolidadores$Data,
+          y = Drawdown_consolidadores$`FOF MM_Drawdown`,
+          name = 'FOF MM'
+        ) %>%
+        layout(
+          title = 'Drawdown Acumulado',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percentual (%)'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+# Fundos
+
+```{r, include=TRUE, echo = FALSE}
+reactable(
+  df_transposto,
+
+  pagination = FALSE,
+  highlight = TRUE,
+  striped = TRUE)
+```
+
+# Macro-Trading
+
+## Row 
+
+### Column {.tabset}
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Métricas Gerais
+reactable(
+  df_macro_trading,
+
+  pagination = FALSE,
+  highlight = TRUE,
+  striped = TRUE)
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Drawdown
+      # Gráfico de drawdown acumulado fundos FOF MM
+      plot_ly(drawdown_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = drawdown_fundos_MM$Data,
+          y = drawdown_fundos_MM$ABSOLUTE_VERTEX,
+          name = 'Absolute Vertex'
+        ) %>%
+        add_trace(
+          x = drawdown_fundos_MM$Data,
+          y = drawdown_fundos_MM$ACE_CAPITAL,
+          name = 'Ace'
+        ) %>%
+        add_trace(
+          x = drawdown_fundos_MM$Data,
+          y = drawdown_fundos_MM$GENOA,
+          name = 'Genoa'
+        ) %>%
+        add_trace(
+          x = drawdown_fundos_MM$Data,
+          y = drawdown_fundos_MM$JGP_STRATEGY,
+          name = 'Jgp Strategy'
+        ) %>%
+        add_trace(
+          x = drawdown_fundos_MM$Data,
+          y = drawdown_fundos_MM$KAPITALO_K10,
+          name = 'Kapitalo K10'
+        ) %>%
+        add_trace(
+          x = drawdown_fundos_MM$Data,
+          y = drawdown_fundos_MM$KAPITALO_ZETA,
+          name = 'Kapitalo Zeta'
+        ) %>%
+        add_trace(
+          x = drawdown_fundos_MM$Data,
+          y = drawdown_fundos_MM$LEGACY,
+          name = 'Legacy'
+        ) %>%
+        layout(
+          title = 'Drawdown Acumulado',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: PL
+      # Gráfico de PL fundos FOF MM
+      plot_ly(pl_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = pl_fundos_MM$Data,
+          y = pl_fundos_MM$ABSOLUTE_VERTEX,
+          name = 'Absolute Vertex'
+        ) %>%
+        add_trace(
+          x = pl_fundos_MM$Data,
+          y = pl_fundos_MM$ACE_CAPITAL,
+          name = 'Ace'
+        ) %>%
+        add_trace(
+          x = pl_fundos_MM$Data,
+          y = pl_fundos_MM$GENOA,
+          name = 'Genoa'
+        ) %>%
+        add_trace(
+          x = pl_fundos_MM$Data,
+          y = pl_fundos_MM$JGP_STRATEGY,
+          name = 'Jgp Strategy'
+        ) %>%
+        add_trace(
+          x = pl_fundos_MM$Data,
+          y = pl_fundos_MM$KAPITALO_K10,
+          name = 'Kapitalo K10'
+        ) %>%
+        add_trace(
+          x = pl_fundos_MM$Data,
+          y = pl_fundos_MM$KAPITALO_ZETA,
+          name = 'Kapitalo Zeta'
+        ) %>%
+        add_trace(
+          x = pl_fundos_MM$Data,
+          y = pl_fundos_MM$LEGACY,
+          name = 'Legacy'
+        ) %>%
+        layout(
+          title = 'PL',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'R$'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+### Column {.tabset}
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Vol 63
+      # Gráfico de Vol 63 fundos FOF MM
+      plot_ly(vol_63_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = vol_63_fundos_MM$Data,
+          y = vol_63_fundos_MM$ABSOLUTE_VERTEX,
+          name = 'Absolute Vertex'
+        ) %>%
+        add_trace(
+          x = vol_63_fundos_MM$Data,
+          y = vol_63_fundos_MM$ACE_CAPITAL,
+          name = 'Ace'
+        ) %>%
+        add_trace(
+          x = vol_63_fundos_MM$Data,
+          y = vol_63_fundos_MM$GENOA,
+          name = 'Genoa'
+        ) %>%
+        add_trace(
+          x = vol_63_fundos_MM$Data,
+          y = vol_63_fundos_MM$JGP_STRATEGY,
+          name = 'Jgp Strategy'
+        ) %>%
+        add_trace(
+          x = vol_63_fundos_MM$Data,
+          y = vol_63_fundos_MM$KAPITALO_K10,
+          name = 'Kapitalo K10'
+        ) %>%
+        add_trace(
+          x = vol_63_fundos_MM$Data,
+          y = vol_63_fundos_MM$KAPITALO_ZETA,
+          name = 'Kapitalo Zeta'
+        ) %>%
+        add_trace(
+          x = vol_63_fundos_MM$Data,
+          y = vol_63_fundos_MM$LEGACY,
+          name = 'Legacy'
+        ) %>%
+        layout(
+          title = 'Volatilidade em J.M. de 63 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Vol 252 
+      # Gráfico de Vol 252 fundos FOF MM
+      plot_ly(vol_252_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = vol_252_fundos_MM$Data,
+          y = vol_252_fundos_MM$ABSOLUTE_VERTEX,
+          name = 'Absolute Vertex'
+        ) %>%
+        add_trace(
+          x = vol_252_fundos_MM$Data,
+          y = vol_252_fundos_MM$ACE_CAPITAL,
+          name = 'Ace'
+        ) %>%
+        add_trace(
+          x = vol_252_fundos_MM$Data,
+          y = vol_252_fundos_MM$GENOA,
+          name = 'Genoa'
+        ) %>%
+        add_trace(
+          x = vol_252_fundos_MM$Data,
+          y = vol_252_fundos_MM$JGP_STRATEGY,
+          name = 'Jgp Strategy'
+        ) %>%
+        add_trace(
+          x = vol_252_fundos_MM$Data,
+          y = vol_252_fundos_MM$KAPITALO_K10,
+          name = 'Kapitalo K10'
+        ) %>%
+        add_trace(
+          x = vol_252_fundos_MM$Data,
+          y = vol_252_fundos_MM$KAPITALO_ZETA,
+          name = 'Kapitalo Zeta'
+        ) %>%
+        add_trace(
+          x = vol_252_fundos_MM$Data,
+          y = vol_252_fundos_MM$LEGACY,
+          name = 'Legacy'
+        ) %>%
+        layout(
+          title = 'Volatilidade em J.M. de 252 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Var 1M
+      # Gráfico de var ewma 1m FOF MM
+      plot_ly(var_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = var_fundos_MM$Data,
+          y = var_fundos_MM$ABSOLUTE_VERTEX,
+          name = 'Absolute Vertex'
+        ) %>%
+        add_trace(
+          x = var_fundos_MM$Data,
+          y = var_fundos_MM$ACE_CAPITAL,
+          name = 'Ace'
+        ) %>%
+        add_trace(
+          x = var_fundos_MM$Data,
+          y = var_fundos_MM$JGP_STRATEGY,
+          name = 'Jgp Strategy'
+        ) %>%
+        add_trace(
+          x = var_fundos_MM$Data,
+          y = var_fundos_MM$KAPITALO_K10,
+          name = 'Kapitalo K10'
+        ) %>%
+        add_trace(
+          x = var_fundos_MM$Data,
+          y = var_fundos_MM$KAPITALO_ZETA,
+          name = 'Kapitalo Zeta'
+        ) %>%
+        add_trace(
+          x = var_fundos_MM$Data,
+          y = var_fundos_MM$LEGACY,
+          name = 'Legacy'
+        ) %>%
+        layout(
+          title = 'VAR EWMA em J.M. de 21 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientatn = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+## Row
+
+### Column {.tabset}
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Ret 1A
+      # Gráfico de Ret. 252 fundos FOF MM
+      plot_ly(ret_252_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = ret_252_fundos_MM$Data,
+          y = ret_252_fundos_MM$ABSOLUTE_VERTEX,
+          name = 'Absolute Vertex'
+        ) %>%
+        add_trace(
+          x = ret_252_fundos_MM$Data,
+          y = ret_252_fundos_MM$ACE_CAPITAL,
+          name = 'Ace'
+        ) %>%
+        add_trace(
+          x = ret_252_fundos_MM$Data,
+          y = ret_252_fundos_MM$GENOA,
+          name = 'Genoa'
+        ) %>%
+        add_trace(
+          x = ret_252_fundos_MM$Data,
+          y = ret_252_fundos_MM$JGP_STRATEGY,
+          name = 'Jgp Strategy'
+        ) %>%
+        add_trace(
+          x = ret_252_fundos_MM$Data,
+          y = ret_252_fundos_MM$KAPITALO_K10,
+          name = 'Kapitalo K10'
+        ) %>%
+        add_trace(
+          x = ret_252_fundos_MM$Data,
+          y = ret_252_fundos_MM$KAPITALO_ZETA,
+          name = 'Kapitalo Zeta'
+        ) %>%
+        add_trace(
+          x = ret_252_fundos_MM$Data,
+          y = ret_252_fundos_MM$LEGACY,
+          name = 'Legacy'
+        ) %>%
+        layout(
+          title = 'Retorno em J.M. de 252 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Ret 2A
+      # Gráfico de ret 504 fundos FOF MM
+      plot_ly(ret_504_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = ret_504_fundos_MM$Data,
+          y = ret_504_fundos_MM$ABSOLUTE_VERTEX,
+          name = 'Absolute Vertex'
+        ) %>%
+        add_trace(
+          x = ret_504_fundos_MM$Data,
+          y = ret_504_fundos_MM$ACE_CAPITAL,
+          name = 'Ace'
+        ) %>%
+        add_trace(
+          x = ret_504_fundos_MM$Data,
+          y = ret_504_fundos_MM$GENOA,
+          name = 'Genoa'
+        ) %>%
+        add_trace(
+          x = ret_504_fundos_MM$Data,
+          y = ret_504_fundos_MM$JGP_STRATEGY,
+          name = 'Jgp Strategy'
+        ) %>%
+        add_trace(
+          x = ret_504_fundos_MM$Data,
+          y = ret_504_fundos_MM$KAPITALO_K10,
+          name = 'Kapitalo K10'
+        ) %>%
+        add_trace(
+          x = ret_504_fundos_MM$Data,
+          y = ret_504_fundos_MM$KAPITALO_ZETA,
+          name = 'Kapitalo Zeta'
+        ) %>%
+        add_trace(
+          x = ret_504_fundos_MM$Data,
+          y = ret_504_fundos_MM$LEGACY,
+          name = 'Legacy'
+        ) %>%
+        layout(
+          title = 'Retorno em J.M. de 504 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Ret 3A
+      # Gráfico de PL fundos FOF MM
+      plot_ly(ret_756_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = ret_756_fundos_MM$Data,
+          y = ret_756_fundos_MM$ABSOLUTE_VERTEX,
+          name = 'Absolute Vertex'
+        ) %>%
+        add_trace(
+          x = ret_756_fundos_MM$Data,
+          y = ret_756_fundos_MM$ACE_CAPITAL,
+          name = 'Ace'
+        ) %>%
+        add_trace(
+          x = ret_756_fundos_MM$Data,
+          y = ret_756_fundos_MM$GENOA,
+          name = 'Genoa'
+        ) %>%
+        add_trace(
+          x = ret_756_fundos_MM$Data,
+          y = ret_756_fundos_MM$JGP_STRATEGY,
+          name = 'Jgp Strategy'
+        ) %>%
+        add_trace(
+          x = ret_756_fundos_MM$Data,
+          y = ret_756_fundos_MM$KAPITALO_K10,
+          name = 'Kapitalo K10'
+        ) %>%
+        add_trace(
+          x = ret_756_fundos_MM$Data,
+          y = ret_756_fundos_MM$KAPITALO_ZETA,
+          name = 'Kapitalo Zeta'
+        ) %>%
+        add_trace(
+          x = ret_756_fundos_MM$Data,
+          y = ret_756_fundos_MM$LEGACY,
+          name = 'Legacy'
+        ) %>%
+        layout(
+          title = 'Retorno em J.M. de 756 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+### Column {.tabset}
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Exc Ret 1A
+      # Gráfico de Exc Ret 1A fundos FOF MM
+      plot_ly(exc_ret_252_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = exc_ret_252_fundos_MM$Data,
+          y = exc_ret_252_fundos_MM$ABSOLUTE_VERTEX,
+          name = 'Absolute Vertex'
+        ) %>%
+        add_trace(
+          x = exc_ret_252_fundos_MM$Data,
+          y = exc_ret_252_fundos_MM$ACE_CAPITAL,
+          name = 'Ace'
+        ) %>%
+        add_trace(
+          x = exc_ret_252_fundos_MM$Data,
+          y = exc_ret_252_fundos_MM$GENOA,
+          name = 'Genoa'
+        ) %>%
+        add_trace(
+          x = exc_ret_252_fundos_MM$Data,
+          y = exc_ret_252_fundos_MM$JGP_STRATEGY,
+          name = 'Jgp Strategy'
+        ) %>%
+        add_trace(
+          x = exc_ret_252_fundos_MM$Data,
+          y = exc_ret_252_fundos_MM$KAPITALO_K10,
+          name = 'Kapitalo K10'
+        ) %>%
+        add_trace(
+          x = exc_ret_252_fundos_MM$Data,
+          y = exc_ret_252_fundos_MM$KAPITALO_ZETA,
+          name = 'Kapitalo Zeta'
+        ) %>%
+        add_trace(
+          x = exc_ret_252_fundos_MM$Data,
+          y = exc_ret_252_fundos_MM$LEGACY,
+          name = 'Legacy'
+        ) %>%
+        layout(
+          title = 'Excesso de Retorno em J.M. de 252 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Exc Ret 2A
+      # Gráfico de Exc Ret 2A fundos FOF MM
+      plot_ly(exc_ret_504_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = exc_ret_504_fundos_MM$Data,
+          y = exc_ret_504_fundos_MM$ABSOLUTE_VERTEX,
+          name = 'Absolute Vertex'
+        ) %>%
+        add_trace(
+          x = exc_ret_504_fundos_MM$Data,
+          y = exc_ret_504_fundos_MM$ACE_CAPITAL,
+          name = 'Ace'
+        ) %>%
+        add_trace(
+          x = exc_ret_504_fundos_MM$Data,
+          y = exc_ret_504_fundos_MM$GENOA,
+          name = 'Genoa'
+        ) %>%
+        add_trace(
+          x = exc_ret_504_fundos_MM$Data,
+          y = exc_ret_504_fundos_MM$JGP_STRATEGY,
+          name = 'Jgp Strategy'
+        ) %>%
+        add_trace(
+          x = exc_ret_504_fundos_MM$Data,
+          y = exc_ret_504_fundos_MM$KAPITALO_K10,
+          name = 'Kapitalo K10'
+        ) %>%
+        add_trace(
+          x = exc_ret_504_fundos_MM$Data,
+          y = exc_ret_504_fundos_MM$KAPITALO_ZETA,
+          name = 'Kapitalo Zeta'
+        ) %>%
+        add_trace(
+          x = exc_ret_504_fundos_MM$Data,
+          y = exc_ret_504_fundos_MM$LEGACY,
+          name = 'Legacy'
+        ) %>%
+        layout(
+          title = 'Excesso de Retorno em J.M. de 504 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Exc Ret 3A
+      # Gráfico de Exc Ret 3A  fundos FOF MM
+      plot_ly(exc_ret_756_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = exc_ret_756_fundos_MM$Data,
+          y = exc_ret_756_fundos_MM$ABSOLUTE_VERTEX,
+          name = 'Absolute Vertex'
+        ) %>%
+        add_trace(
+          x = exc_ret_756_fundos_MM$Data,
+          y = exc_ret_756_fundos_MM$ACE_CAPITAL,
+          name = 'Ace'
+        ) %>%
+        add_trace(
+          x = exc_ret_756_fundos_MM$Data,
+          y = exc_ret_756_fundos_MM$JGP_STRATEGY,
+          name = 'Jgp Strategy'
+        ) %>%
+        add_trace(
+          x = exc_ret_756_fundos_MM$Data,
+          y = exc_ret_756_fundos_MM$KAPITALO_K10,
+          name = 'Kapitalo K10'
+        ) %>%
+        add_trace(
+          x = exc_ret_756_fundos_MM$Data,
+          y = exc_ret_756_fundos_MM$KAPITALO_ZETA,
+          name = 'Kapitalo Zeta'
+        ) %>%
+        add_trace(
+          x = exc_ret_756_fundos_MM$Data,
+          y = exc_ret_756_fundos_MM$LEGACY,
+          name = 'Legacy'
+        ) %>%
+        layout(
+          title = 'Excesso de Retorno em J.M. de 756 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+# Macro Carregamento
+
+## Row 
+
+### Column {.tabset}
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Métricas Gerais
+reactable(
+  df_macro_carregamento,
+
+  pagination = FALSE,
+  highlight = TRUE,
+  striped = TRUE)
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Drawdown
+      # Gráfico de drawdown acumulado fundos FOF MM
+      plot_ly(drawdown_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = drawdown_fundos_MM$Data,
+          y = drawdown_fundos_MM$GAVEA_MACRO_PLUS,
+          name = 'Gávea Macro Plus'
+        ) %>%
+        add_trace(
+          x = drawdown_fundos_MM$Data,
+          y = drawdown_fundos_MM$IBIUNA_HEDGE,
+          name = 'Ibiuna Hedge'
+        ) %>%
+        add_trace(
+          x = drawdown_fundos_MM$Data,
+          y = drawdown_fundos_MM$MAR,
+          name = 'MAR'
+        ) %>%
+        add_trace(
+          x = drawdown_fundos_MM$Data,
+          y = drawdown_fundos_MM$OCCAM_EQUITY_HEDGE,
+          name = 'Occam'
+        ) %>%
+        add_trace(
+          x = drawdown_fundos_MM$Data,
+          y = drawdown_fundos_MM$QUANTITAS,
+          name = 'Quantitas'
+        ) %>%
+        add_trace(
+          x = drawdown_fundos_MM$Data,
+          y = drawdown_fundos_MM$SPX_NIMITZ,
+          name = 'SPX Nimitz'
+        ) %>%
+        layout(
+          title = 'Drawdown Acumulado',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: PL
+      # Gráfico de PL fundos FOF MM
+      plot_ly(pl_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = pl_fundos_MM$Data,
+          y = pl_fundos_MM$GAVEA_MACRO_PLUS,
+          name = 'Gávea Macro Plus'
+        ) %>%
+        add_trace(
+          x = pl_fundos_MM$Data,
+          y = pl_fundos_MM$IBIUNA_HEDGE,
+          name = 'Ibiuna Hedge'
+        ) %>%
+        add_trace(
+          x = pl_fundos_MM$Data,
+          y = pl_fundos_MM$MAR,
+          name = 'MAR'
+        ) %>%
+        add_trace(
+          x = pl_fundos_MM$Data,
+          y = pl_fundos_MM$OCCAM_EQUITY_HEDGE,
+          name = 'Occam'
+        ) %>%
+        add_trace(
+          x = pl_fundos_MM$Data,
+          y = pl_fundos_MM$QUANTITAS,
+          name = 'Quantitas'
+        ) %>%
+        add_trace(
+          x = pl_fundos_MM$Data,
+          y = pl_fundos_MM$SPX_NIMITZ,
+          name = 'SPX Nimitz'
+        ) %>%
+        layout(
+          title = 'PL',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'R$'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+### Column {.tabset}
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Vol 63
+      # Gráfico de Vol 63 fundos FOF MM
+      plot_ly(vol_63_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = vol_63_fundos_MM$Data,
+          y = vol_63_fundos_MM$GAVEA_MACRO_PLUS,
+          name = 'Gávea Macro Plus'
+        ) %>%
+        add_trace(
+          x = vol_63_fundos_MM$Data,
+          y = vol_63_fundos_MM$IBIUNA_HEDGE,
+          name = 'Ibiuna Hedge'
+        ) %>%
+        add_trace(
+          x = vol_63_fundos_MM$Data,
+          y = vol_63_fundos_MM$MAR,
+          name = 'MAR'
+        ) %>%
+        add_trace(
+          x = vol_63_fundos_MM$Data,
+          y = vol_63_fundos_MM$OCCAM_EQUITY_HEDGE,
+          name = 'Occam'
+        ) %>%
+        add_trace(
+          x = vol_63_fundos_MM$Data,
+          y = vol_63_fundos_MM$QUANTITAS,
+          name = 'Quantitas'
+        ) %>%
+        add_trace(
+          x = vol_63_fundos_MM$Data,
+          y = vol_63_fundos_MM$SPX_NIMITZ,
+          name = 'SPX Nimitz'
+        ) %>%
+        layout(
+          title = 'Volatilidade em J.M. de 63 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Vol 252 
+      # Gráfico de Vol 252 fundos FOF MM
+      plot_ly(vol_252_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = vol_252_fundos_MM$Data,
+          y = vol_252_fundos_MM$GAVEA_MACRO_PLUS,
+          name = 'Gávea Macro Plus'
+        ) %>%
+        add_trace(
+          x = vol_252_fundos_MM$Data,
+          y = vol_252_fundos_MM$IBIUNA_HEDGE,
+          name = 'Ibiuna Hedge'
+        ) %>%
+        add_trace(
+          x = vol_252_fundos_MM$Data,
+          y = vol_252_fundos_MM$MAR,
+          name = 'MAR'
+        ) %>%
+        add_trace(
+          x = vol_252_fundos_MM$Data,
+          y = vol_252_fundos_MM$OCCAM_EQUITY_HEDGE,
+          name = 'Occam'
+        ) %>%
+        add_trace(
+          x = vol_252_fundos_MM$Data,
+          y = vol_252_fundos_MM$QUANTITAS,
+          name = 'Quantitas'
+        ) %>%
+        add_trace(
+          x = vol_252_fundos_MM$Data,
+          y = vol_252_fundos_MM$SPX_NIMITZ,
+          name = 'SPX Nimitz'
+        ) %>%
+        layout(
+          title = 'Volatilidade em J.M. de 252 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Var 1M
+      # Gráfico de var ewma 1m FOF MM
+      plot_ly(var_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = var_fundos_MM$Data,
+          y = var_fundos_MM$GAVEA_MACRO_PLUS,
+          name = 'Gávea Macro Plus'
+        ) %>%
+        add_trace(
+          x = var_fundos_MM$Data,
+          y = var_fundos_MM$IBIUNA_HEDGE,
+          name = 'Ibiuna Hedge'
+        ) %>%
+        add_trace(
+          x = var_fundos_MM$Data,
+          y = var_fundos_MM$OCCAM_EQUITY_HEDGE,
+          name = 'Occam'
+        ) %>%
+        add_trace(
+          x = var_fundos_MM$Data,
+          y = var_fundos_MM$QUANTITAS,
+          name = 'Quantitas'
+        ) %>%
+        add_trace(
+          x = var_fundos_MM$Data,
+          y = var_fundos_MM$SPX_NIMITZ,
+          name = 'SPX Nimitz'
+        ) %>%
+        layout(
+          title = 'VAR EWMA em J.M. de 21 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientatn = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+## Row
+
+### Column {.tabset}
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Ret 1A
+      # Gráfico de Ret. 252 fundos FOF MM
+      plot_ly(ret_252_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = ret_252_fundos_MM$Data,
+          y = ret_252_fundos_MM$GAVEA_MACRO_PLUS,
+          name = 'Gávea Macro Plus'
+        ) %>%
+        add_trace(
+          x = ret_252_fundos_MM$Data,
+          y = ret_252_fundos_MM$IBIUNA_HEDGE,
+          name = 'Ibiuna Hedge'
+        ) %>%
+        add_trace(
+          x = ret_252_fundos_MM$Data,
+          y = ret_252_fundos_MM$MAR,
+          name = 'MAR'
+        ) %>%
+        add_trace(
+          x = ret_252_fundos_MM$Data,
+          y = ret_252_fundos_MM$OCCAM_EQUITY_HEDGE,
+          name = 'Occam'
+        ) %>%
+        add_trace(
+          x = ret_252_fundos_MM$Data,
+          y = ret_252_fundos_MM$QUANTITAS,
+          name = 'Quantitas'
+        ) %>%
+        add_trace(
+          x = ret_252_fundos_MM$Data,
+          y = ret_252_fundos_MM$SPX_NIMITZ,
+          name = 'SPX Nimitz'
+        ) %>%
+        layout(
+          title = 'Retorno em J.M. de 252 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Ret 2A
+      # Gráfico de ret 504 fundos FOF MM
+      plot_ly(ret_504_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = ret_504_fundos_MM$Data,
+          y = ret_504_fundos_MM$GAVEA_MACRO_PLUS,
+          name = 'Gávea Macro Plus'
+        ) %>%
+        add_trace(
+          x = ret_504_fundos_MM$Data,
+          y = ret_504_fundos_MM$IBIUNA_HEDGE,
+          name = 'Ibiuna Hedge'
+        ) %>%
+        add_trace(
+          x = ret_504_fundos_MM$Data,
+          y = ret_504_fundos_MM$MAR,
+          name = 'MAR'
+        ) %>%
+        add_trace(
+          x = ret_504_fundos_MM$Data,
+          y = ret_504_fundos_MM$OCCAM_EQUITY_HEDGE,
+          name = 'Occam'
+        ) %>%
+        add_trace(
+          x = ret_504_fundos_MM$Data,
+          y = ret_504_fundos_MM$QUANTITAS,
+          name = 'Quantitas'
+        ) %>%
+        add_trace(
+          x = ret_504_fundos_MM$Data,
+          y = ret_504_fundos_MM$SPX_NIMITZ,
+          name = 'SPX Nimitz'
+        ) %>%
+        layout(
+          title = 'Retorno em J.M. de 504 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Ret 3A
+      # Gráfico de PL fundos FOF MM
+      plot_ly(ret_756_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = ret_756_fundos_MM$Data,
+          y = ret_756_fundos_MM$GAVEA_MACRO_PLUS,
+          name = 'Gávea Macro Plus'
+        ) %>%
+        add_trace(
+          x = ret_756_fundos_MM$Data,
+          y = ret_756_fundos_MM$IBIUNA_HEDGE,
+          name = 'Ibiuna Hedge'
+        ) %>%
+        add_trace(
+          x = ret_756_fundos_MM$Data,
+          y = ret_756_fundos_MM$MAR,
+          name = 'MAR'
+        ) %>%
+        add_trace(
+          x = ret_756_fundos_MM$Data,
+          y = ret_756_fundos_MM$OCCAM_EQUITY_HEDGE,
+          name = 'Occam'
+        ) %>%
+        add_trace(
+          x = ret_756_fundos_MM$Data,
+          y = ret_756_fundos_MM$QUANTITAS,
+          name = 'Quantitas'
+        ) %>%
+        add_trace(
+          x = ret_756_fundos_MM$Data,
+          y = ret_756_fundos_MM$SPX_NIMITZ,
+          name = 'SPX Nimitz'
+        ) %>%
+        layout(
+          title = 'Retorno em J.M. de 756 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+### Column {.tabset}
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Exc Ret 1A
+      # Gráfico de Exc Ret 1A fundos FOF MM
+      plot_ly(exc_ret_252_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = exc_ret_252_fundos_MM$Data,
+          y = exc_ret_252_fundos_MM$GAVEA_MACRO_PLUS,
+          name = 'Gávea Macro Plus'
+        ) %>%
+        add_trace(
+          x = exc_ret_252_fundos_MM$Data,
+          y = exc_ret_252_fundos_MM$IBIUNA_HEDGE,
+          name = 'Ibiuna Hedge'
+        ) %>%
+        add_trace(
+          x = exc_ret_252_fundos_MM$Data,
+          y = exc_ret_252_fundos_MM$MAR,
+          name = 'MAR'
+        ) %>%
+        add_trace(
+          x = exc_ret_252_fundos_MM$Data,
+          y = exc_ret_252_fundos_MM$OCCAM_EQUITY_HEDGE,
+          name = 'Occam'
+        ) %>%
+        add_trace(
+          x = exc_ret_252_fundos_MM$Data,
+          y = exc_ret_252_fundos_MM$QUANTITAS,
+          name = 'Quantitas'
+        ) %>%
+        add_trace(
+          x = exc_ret_252_fundos_MM$Data,
+          y = exc_ret_252_fundos_MM$SPX_NIMITZ,
+          name = 'SPX Nimitz'
+        ) %>%
+        layout(
+          title = 'Excesso de Retorno em J.M. de 252 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Exc Ret 2A
+      # Gráfico de Exc Ret 2A fundos FOF MM
+      plot_ly(exc_ret_504_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = exc_ret_504_fundos_MM$Data,
+          y = exc_ret_504_fundos_MM$GAVEA_MACRO_PLUS,
+          name = 'Gávea Macro Plus'
+        ) %>%
+        add_trace(
+          x = exc_ret_504_fundos_MM$Data,
+          y = exc_ret_504_fundos_MM$IBIUNA_HEDGE,
+          name = 'Ibiuna Hedge'
+        ) %>%
+        add_trace(
+          x = exc_ret_504_fundos_MM$Data,
+          y = exc_ret_504_fundos_MM$MAR,
+          name = 'MAR'
+        ) %>%
+        add_trace(
+          x = exc_ret_504_fundos_MM$Data,
+          y = exc_ret_504_fundos_MM$OCCAM_EQUITY_HEDGE,
+          name = 'Occam'
+        ) %>%
+        add_trace(
+          x = exc_ret_504_fundos_MM$Data,
+          y = exc_ret_504_fundos_MM$QUANTITAS,
+          name = 'Quantitas'
+        ) %>%
+        add_trace(
+          x = exc_ret_504_fundos_MM$Data,
+          y = exc_ret_504_fundos_MM$SPX_NIMITZ,
+          name = 'SPX Nimitz'
+        ) %>%
+        layout(
+          title = 'Excesso de Retorno em J.M. de 504 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Exc Ret 3A
+      # Gráfico de Exc Ret 3A  fundos FOF MM
+      plot_ly(exc_ret_756_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = exc_ret_756_fundos_MM$Data,
+          y = exc_ret_756_fundos_MM$GAVEA_MACRO_PLUS,
+          name = 'Gávea Macro Plus'
+        ) %>%
+        add_trace(
+          x = exc_ret_756_fundos_MM$Data,
+          y = exc_ret_756_fundos_MM$IBIUNA_HEDGE,
+          name = 'Ibiuna Hedge'
+        ) %>%
+        add_trace(
+          x = exc_ret_756_fundos_MM$Data,
+          y = exc_ret_756_fundos_MM$MAR,
+          name = 'MAR'
+        ) %>%
+        add_trace(
+          x = exc_ret_756_fundos_MM$Data,
+          y = exc_ret_756_fundos_MM$OCCAM_EQUITY_HEDGE,
+          name = 'Occam'
+        ) %>%
+        add_trace(
+          x = exc_ret_756_fundos_MM$Data,
+          y = exc_ret_756_fundos_MM$QUANTITAS,
+          name = 'Quantitas'
+        ) %>%
+        add_trace(
+          x = exc_ret_756_fundos_MM$Data,
+          y = exc_ret_756_fundos_MM$SPX_NIMITZ,
+          name = 'SPX Nimitz'
+        ) %>%
+        layout(
+          title = 'Excesso de Retorno em J.M. de 756 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+# Long & Short
+
+## Row 
+
+### Column {.tabset}
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Métricas Gerais
+reactable(
+  df_long_short,
+
+  pagination = FALSE,
+  highlight = TRUE,
+  striped = TRUE)
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Drawdown
+      # Gráfico de drawdown acumulado fundos FOF MM
+      plot_ly(drawdown_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = drawdown_fundos_MM$Data,
+          y = drawdown_fundos_MM$CONSTANCIA,
+          name = 'Constância'
+        ) %>%
+        add_trace(
+          x = drawdown_fundos_MM$Data,
+          y = drawdown_fundos_MM$IBIUNA_LONG_SHORT,
+          name = 'Ibiuna Long Short'
+        ) %>%
+        add_trace(
+          x = drawdown_fundos_MM$Data,
+          y = drawdown_fundos_MM$REAL_INVESTOR,
+          name = 'Real Investor'
+        ) %>%
+        add_trace(
+          x = drawdown_fundos_MM$Data,
+          y = drawdown_fundos_MM$SHARP_LONG_SHORT,
+          name = 'Sharp Long Short'
+        ) %>%
+        add_trace(
+          x = drawdown_fundos_MM$Data,
+          y = drawdown_fundos_MM$SOLANA,
+          name = 'Solana'
+        ) %>%
+        layout(
+          title = 'Drawdown Acumulado',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: PL
+      # Gráfico de PL fundos FOF MM
+      plot_ly(pl_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = pl_fundos_MM$Data,
+          y = pl_fundos_MM$CONSTANCIA,
+          name = 'Constância'
+        ) %>%
+        add_trace(
+          x = pl_fundos_MM$Data,
+          y = pl_fundos_MM$IBIUNA_LONG_SHORT,
+          name = 'Ibiuna Long Short'
+        ) %>%
+        add_trace(
+          x = pl_fundos_MM$Data,
+          y = pl_fundos_MM$REAL_INVESTOR,
+          name = 'Real Investor'
+        ) %>%
+        add_trace(
+          x = pl_fundos_MM$Data,
+          y = pl_fundos_MM$SHARP_LONG_SHORT,
+          name = 'Sharp Long Short'
+        ) %>%
+        add_trace(
+          x = pl_fundos_MM$Data,
+          y = pl_fundos_MM$SOLANA,
+          name = 'Solana'
+        ) %>%
+        layout(
+          title = 'PL',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'R$'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+### Column {.tabset}
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Vol 63
+      # Gráfico de Vol 63 fundos FOF MM
+      plot_ly(vol_63_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = vol_63_fundos_MM$Data,
+          y = vol_63_fundos_MM$CONSTANCIA,
+          name = 'Constância'
+        ) %>%
+        add_trace(
+          x = vol_63_fundos_MM$Data,
+          y = vol_63_fundos_MM$IBIUNA_LONG_SHORT,
+          name = 'Ibiuna Long Short'
+        ) %>%
+        add_trace(
+          x = vol_63_fundos_MM$Data,
+          y = vol_63_fundos_MM$REAL_INVESTOR,
+          name = 'Real Investor'
+        ) %>%
+        add_trace(
+          x = vol_63_fundos_MM$Data,
+          y = vol_63_fundos_MM$SHARP_LONG_SHORT,
+          name = 'Sharp Long Short'
+        ) %>%
+        add_trace(
+          x = vol_63_fundos_MM$Data,
+          y = vol_63_fundos_MM$SOLANA,
+          name = 'Solana'
+        ) %>%
+        layout(
+          title = 'Volatilidade em J.M. de 63 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Vol 252 
+      # Gráfico de Vol 252 fundos FOF MM
+      plot_ly(vol_252_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = vol_252_fundos_MM$Data,
+          y = vol_252_fundos_MM$CONSTANCIA,
+          name = 'Constância'
+        ) %>%
+        add_trace(
+          x = vol_252_fundos_MM$Data,
+          y = vol_252_fundos_MM$IBIUNA_LONG_SHORT,
+          name = 'Ibiuna Long Short'
+        ) %>%
+        add_trace(
+          x = vol_252_fundos_MM$Data,
+          y = vol_252_fundos_MM$REAL_INVESTOR,
+          name = 'Real Investor'
+        ) %>%
+        add_trace(
+          x = vol_252_fundos_MM$Data,
+          y = vol_252_fundos_MM$SHARP_LONG_SHORT,
+          name = 'Sharp Long Short'
+        ) %>%
+        add_trace(
+          x = vol_252_fundos_MM$Data,
+          y = vol_252_fundos_MM$SOLANA,
+          name = 'Solana'
+        ) %>%
+        layout(
+          title = 'Volatilidade em J.M. de 252 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Var 1M
+      # Gráfico de var ewma 1m FOF MM
+      plot_ly(var_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = var_fundos_MM$Data,
+          y = var_fundos_MM$CONSTANCIA,
+          name = 'Constância'
+        ) %>%
+        add_trace(
+          x = var_fundos_MM$Data,
+          y = var_fundos_MM$IBIUNA_LONG_SHORT,
+          name = 'Ibiuna Long Short'
+        ) %>%
+        add_trace(
+          x = var_fundos_MM$Data,
+          y = var_fundos_MM$SHARP_LONG_SHORT,
+          name = 'Sharp Long Short'
+        ) %>%
+        add_trace(
+          x = var_fundos_MM$Data,
+          y = var_fundos_MM$SOLANA,
+          name = 'Solana'
+        ) %>%
+        layout(
+          title = 'VAR EWMA em J.M. de 21 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientatn = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+## Row
+
+### Column {.tabset}
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Ret 1A
+      # Gráfico de Ret. 252 fundos FOF MM
+      plot_ly(ret_252_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = ret_252_fundos_MM$Data,
+          y = ret_252_fundos_MM$CONSTANCIA,
+          name = 'Constância'
+        ) %>%
+        add_trace(
+          x = ret_252_fundos_MM$Data,
+          y = ret_252_fundos_MM$IBIUNA_LONG_SHORT,
+          name = 'Ibiuna Long Short'
+        ) %>%
+        add_trace(
+          x = ret_252_fundos_MM$Data,
+          y = ret_252_fundos_MM$REAL_INVESTOR,
+          name = 'Real Investor'
+        ) %>%
+        add_trace(
+          x = ret_252_fundos_MM$Data,
+          y = ret_252_fundos_MM$SHARP_LONG_SHORT,
+          name = 'Sharp Long Short'
+        ) %>%
+        add_trace(
+          x = ret_252_fundos_MM$Data,
+          y = ret_252_fundos_MM$SOLANA,
+          name = 'Solana'
+        ) %>%
+        layout(
+          title = 'Retorno em J.M. de 252 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Ret 2A
+      # Gráfico de ret 504 fundos FOF MM
+      plot_ly(ret_504_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = ret_504_fundos_MM$Data,
+          y = ret_504_fundos_MM$CONSTANCIA,
+          name = 'Constância'
+        ) %>%
+        add_trace(
+          x = ret_504_fundos_MM$Data,
+          y = ret_504_fundos_MM$IBIUNA_LONG_SHORT,
+          name = 'Ibiuna Long Short'
+        ) %>%
+        add_trace(
+          x = ret_504_fundos_MM$Data,
+          y = ret_504_fundos_MM$REAL_INVESTOR,
+          name = 'Real Investor'
+        ) %>%
+        add_trace(
+          x = ret_504_fundos_MM$Data,
+          y = ret_504_fundos_MM$SHARP_LONG_SHORT,
+          name = 'Sharp Long Short'
+        ) %>%
+        add_trace(
+          x = ret_504_fundos_MM$Data,
+          y = ret_504_fundos_MM$SOLANA,
+          name = 'Solana'
+        ) %>%
+        layout(
+          title = 'Retorno em J.M. de 504 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Ret 3A
+      # Gráfico de PL fundos FOF MM
+      plot_ly(ret_756_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = ret_756_fundos_MM$Data,
+          y = ret_756_fundos_MM$CONSTANCIA,
+          name = 'Constância'
+        ) %>%
+        add_trace(
+          x = ret_756_fundos_MM$Data,
+          y = ret_756_fundos_MM$IBIUNA_LONG_SHORT,
+          name = 'Ibiuna Long Short'
+        ) %>%
+        add_trace(
+          x = ret_756_fundos_MM$Data,
+          y = ret_756_fundos_MM$REAL_INVESTOR,
+          name = 'Real Investor'
+        ) %>%
+        add_trace(
+          x = ret_756_fundos_MM$Data,
+          y = ret_756_fundos_MM$SHARP_LONG_SHORT,
+          name = 'Sharp Long Short'
+        ) %>%
+        add_trace(
+          x = ret_756_fundos_MM$Data,
+          y = ret_756_fundos_MM$SOLANA,
+          name = 'Solana'
+        ) %>%
+        layout(
+          title = 'Retorno em J.M. de 756 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+### Column {.tabset}
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Exc Ret 1A
+      # Gráfico de Exc Ret 1A fundos FOF MM
+      plot_ly(exc_ret_252_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = exc_ret_252_fundos_MM$Data,
+          y = exc_ret_252_fundos_MM$CONSTANCIA,
+          name = 'Constância'
+        ) %>%
+        add_trace(
+          x = exc_ret_252_fundos_MM$Data,
+          y = exc_ret_252_fundos_MM$IBIUNA_LONG_SHORT,
+          name = 'Ibiuna Long Short'
+        ) %>%
+        add_trace(
+          x = exc_ret_252_fundos_MM$Data,
+          y = exc_ret_252_fundos_MM$REAL_INVESTOR,
+          name = 'Real Investor'
+        ) %>%
+        add_trace(
+          x = exc_ret_252_fundos_MM$Data,
+          y = exc_ret_252_fundos_MM$SHARP_LONG_SHORT,
+          name = 'Sharp Long Short'
+        ) %>%
+        add_trace(
+          x = exc_ret_252_fundos_MM$Data,
+          y = exc_ret_252_fundos_MM$SOLANA,
+          name = 'Solana'
+        ) %>%
+        layout(
+          title = 'Excesso de Retorno em J.M. de 252 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Exc Ret 2A
+      # Gráfico de Exc Ret 2A fundos FOF MM
+      plot_ly(exc_ret_504_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = exc_ret_504_fundos_MM$Data,
+          y = exc_ret_504_fundos_MM$CONSTANCIA,
+          name = 'Constância'
+        ) %>%
+        add_trace(
+          x = exc_ret_504_fundos_MM$Data,
+          y = exc_ret_504_fundos_MM$IBIUNA_LONG_SHORT,
+          name = 'Ibiuna Long Short'
+        ) %>%
+        add_trace(
+          x = exc_ret_504_fundos_MM$Data,
+          y = exc_ret_504_fundos_MM$REAL_INVESTOR,
+          name = 'Real Investor'
+        ) %>%
+        add_trace(
+          x = exc_ret_504_fundos_MM$Data,
+          y = exc_ret_504_fundos_MM$SHARP_LONG_SHORT,
+          name = 'Sharp Long Short'
+        ) %>%
+        add_trace(
+          x = exc_ret_504_fundos_MM$Data,
+          y = exc_ret_504_fundos_MM$SOLANA,
+          name = 'Solana'
+        ) %>%
+        layout(
+          title = 'Excesso de Retorno em J.M. de 504 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Exc Ret 3A
+      # Gráfico de Exc Ret 3A  fundos FOF MM
+      plot_ly(exc_ret_756_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = exc_ret_756_fundos_MM$Data,
+          y = exc_ret_756_fundos_MM$CONSTANCIA,
+          name = 'Constância'
+        ) %>%
+        add_trace(
+          x = exc_ret_756_fundos_MM$Data,
+          y = exc_ret_756_fundos_MM$IBIUNA_LONG_SHORT,
+          name = 'Ibiuna Long Short'
+        ) %>%
+        add_trace(
+          x = exc_ret_756_fundos_MM$Data,
+          y = exc_ret_756_fundos_MM$REAL_INVESTOR,
+          name = 'Real Investor'
+        ) %>%
+        add_trace(
+          x = exc_ret_756_fundos_MM$Data,
+          y = exc_ret_756_fundos_MM$SHARP_LONG_SHORT,
+          name = 'Sharp Long Short'
+        ) %>%
+        add_trace(
+          x = exc_ret_756_fundos_MM$Data,
+          y = exc_ret_756_fundos_MM$SOLANA,
+          name = 'Solana'
+        ) %>%
+        layout(
+          title = 'Excesso de Retorno em J.M. de 756 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+# Sistemático
+
+## Row 
+
+### Column {.tabset}
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Métricas Gerais
+reactable(
+  df_sistematico,
+
+  pagination = FALSE,
+  highlight = TRUE,
+  striped = TRUE)
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Drawdown
+      # Gráfico de drawdown acumulado fundos FOF MM
+      plot_ly(drawdown_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = drawdown_fundos_MM$Data,
+          y = drawdown_fundos_MM$GIANT_ZARATHUSTRA,
+          name = 'Giant'
+        ) %>%
+        add_trace(
+          x = drawdown_fundos_MM$Data,
+          y = drawdown_fundos_MM$KADIMA_HIGH_VOL,
+          name = 'Kadima'
+        ) %>%
+        layout(
+          title = 'Drawdown Acumulado',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: PL
+      # Gráfico de PL fundos FOF MM
+      plot_ly(pl_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = pl_fundos_MM$Data,
+          y = pl_fundos_MM$GIANT_ZARATHUSTRA,
+          name = 'Giant'
+        ) %>%
+        add_trace(
+          x = pl_fundos_MM$Data,
+          y = pl_fundos_MM$KADIMA_HIGH_VOL,
+          name = 'Kadima'
+        ) %>%
+        layout(
+          title = 'PL',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'R$'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+### Column {.tabset}
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Vol 63
+      # Gráfico de Vol 63 fundos FOF MM
+      plot_ly(vol_63_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = vol_63_fundos_MM$Data,
+          y = vol_63_fundos_MM$GIANT_ZARATHUSTRA,
+          name = 'Giant'
+        ) %>%
+        add_trace(
+          x = vol_63_fundos_MM$Data,
+          y = vol_63_fundos_MM$KADIMA_HIGH_VOL,
+          name = 'Kadima'
+        ) %>%
+        layout(
+          title = 'Volatilidade em J.M. de 63 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Vol 252 
+      # Gráfico de Vol 252 fundos FOF MM
+      plot_ly(vol_252_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = vol_252_fundos_MM$Data,
+          y = vol_252_fundos_MM$GIANT_ZARATHUSTRA,
+          name = 'Giant'
+        ) %>%
+        add_trace(
+          x = vol_252_fundos_MM$Data,
+          y = vol_252_fundos_MM$KADIMA_HIGH_VOL,
+          name = 'Kadima'
+        ) %>%
+        layout(
+          title = 'Volatilidade em J.M. de 252 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Var 1M
+      # Gráfico de var ewma 1m FOF MM
+      plot_ly(var_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = var_fundos_MM$Data,
+          y = var_fundos_MM$GIANT_ZARATHUSTRA,
+          name = 'Giant'
+        ) %>%
+        layout(
+          title = 'VAR EWMA em J.M. de 21 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientatn = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+## Row
+
+### Column {.tabset}
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Ret 1A
+      # Gráfico de Ret. 252 fundos FOF MM
+      plot_ly(ret_252_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = ret_252_fundos_MM$Data,
+          y = ret_252_fundos_MM$GIANT_ZARATHUSTRA,
+          name = 'Giant'
+        ) %>%
+        add_trace(
+          x = ret_252_fundos_MM$Data,
+          y = ret_252_fundos_MM$KADIMA_HIGH_VOL,
+          name = 'Kadima'
+        ) %>%
+        layout(
+          title = 'Retorno em J.M. de 252 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Ret 2A
+      # Gráfico de ret 504 fundos FOF MM
+      plot_ly(ret_504_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = ret_504_fundos_MM$Data,
+          y = ret_504_fundos_MM$GIANT_ZARATHUSTRA,
+          name = 'Giant'
+        ) %>%
+        add_trace(
+          x = ret_504_fundos_MM$Data,
+          y = ret_504_fundos_MM$KADIMA_HIGH_VOL,
+          name = 'Kadima'
+        ) %>%
+        layout(
+          title = 'Retorno em J.M. de 504 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Ret 3A
+      # Gráfico de PL fundos FOF MM
+      plot_ly(ret_756_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = ret_756_fundos_MM$Data,
+          y = ret_756_fundos_MM$GIANT_ZARATHUSTRA,
+          name = 'Giant'
+        ) %>%
+        add_trace(
+          x = ret_756_fundos_MM$Data,
+          y = ret_756_fundos_MM$KADIMA_HIGH_VOL,
+          name = 'Kadima'
+        ) %>%
+        layout(
+          title = 'Retorno em J.M. de 756 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+### Column {.tabset}
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Exc Ret 1A
+      # Gráfico de Exc Ret 1A fundos FOF MM
+      plot_ly(exc_ret_252_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = exc_ret_252_fundos_MM$Data,
+          y = exc_ret_252_fundos_MM$GIANT_ZARATHUSTRA,
+          name = 'Giant'
+        ) %>%
+        add_trace(
+          x = exc_ret_252_fundos_MM$Data,
+          y = exc_ret_252_fundos_MM$KADIMA_HIGH_VOL,
+          name = 'Kadima'
+        ) %>%
+        layout(
+          title = 'Excesso de Retorno em J.M. de 252 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Exc Ret 2A
+      # Gráfico de Exc Ret 2A fundos FOF MM
+      plot_ly(exc_ret_504_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = exc_ret_504_fundos_MM$Data,
+          y = exc_ret_504_fundos_MM$GIANT_ZARATHUSTRA,
+          name = 'Giant'
+        ) %>%
+        add_trace(
+          x = exc_ret_504_fundos_MM$Data,
+          y = exc_ret_504_fundos_MM$KADIMA_HIGH_VOL,
+          name = 'Kadima'
+        ) %>%
+        layout(
+          title = 'Excesso de Retorno em J.M. de 504 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+#| title: Exc Ret 3A
+      # Gráfico de Exc Ret 3A  fundos FOF MM
+      plot_ly(exc_ret_756_fundos_MM, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = exc_ret_756_fundos_MM$Data,
+          y = exc_ret_756_fundos_MM$GIANT_ZARATHUSTRA,
+          name = 'Giant'
+        ) %>%
+        add_trace(
+          x = exc_ret_756_fundos_MM$Data,
+          y = exc_ret_756_fundos_MM$KADIMA_HIGH_VOL,
+          name = 'Kadima'
+        ) %>%
+        layout(
+          title = 'Excesso de Retorno em J.M. de 756 DU',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0, y = 1.05),
+          hovermode = 'compare'
+        )
+```

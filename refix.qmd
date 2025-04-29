@@ -1,0 +1,149 @@
+---
+format: dashboard
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r, include=FALSE, echo = FALSE}
+library(httr)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(tidyverse)
+library(readxl)
+library(reactable)
+library(lubridate)
+library(quantmod)
+library(leaflet)
+```
+
+```{r, include=FALSE, echo = FALSE}
+Cotas_Consolidadores <- read_excel("C:/Users/dreal/Downloads/Cotas Consolidadores.xlsx", 
+col_types = c("date", "numeric", "numeric", "numeric", "numeric"), na = "0")
+
+colnames(Cotas_Consolidadores) <- c("Data", "FOF MM", "REFIX", "FOF RV", "FOF HEDGE")
+Cotas_Consolidadores <- Cotas_Consolidadores[, c("Data", "REFIX")]
+Cotas_Consolidadores <- Cotas_Consolidadores[Cotas_Consolidadores$Data > as.Date("2023-09-29"), ]
+
+PL_Consolidadores <- read_excel("C:/Users/dreal/Downloads/PL Consolidadores.xlsx", 
+col_types = c("date", "numeric", "numeric", "numeric", "numeric"), na = "0")
+
+colnames(PL_Consolidadores) <- c("Data", "FOF MM", "REFIX", "FOF RV", "FOF HEDGE")
+PL_Consolidadores <- PL_Consolidadores[, c("Data", "REFIX")]
+PL_Consolidadores <- PL_Consolidadores[PL_Consolidadores$Data > as.Date("2023-09-29"), ]
+
+Cotas_Benchmarks <- read_excel("C:/Users/dreal/Downloads/Cotas Benchmarks.xlsx", 
+col_types = c("date", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric"), na = "0")
+
+colnames(Cotas_Benchmarks) <- c("Data","CDI","DÓLAR","IBOV","IFMM","IHFA","IMAB","BSHY")
+Cotas_Benchmarks <- Cotas_Benchmarks[, c("Data", "IMAB")]
+Cotas_Benchmarks <- Cotas_Benchmarks[Cotas_Benchmarks$Data > as.Date("2023-09-29"), ]
+``` 
+
+```{r, include=FALSE, echo = FALSE}
+
+# Função para calcular a série de drawdowns em múltiplas colunas
+calcular_drawdowns <- function(df, colunas) {
+  df_drawdowns <- df
+  for (coluna in colunas) {
+    max_cotas <- cummax(df[[coluna]])  # Máximos acumulados
+    df_drawdowns[[paste0(coluna, "_Drawdown")]] <- ((df[[coluna]] / max_cotas) - 1)*100  # Cálculo do drawdown
+  }
+  
+  df_drawdowns[is.na(df_drawdowns)] <- 0
+  
+  return(df_drawdowns)
+}
+
+Drawdown_consolidadores <- calcular_drawdowns(Cotas_Consolidadores, colunas = c("REFIX"))
+```
+
+# Consolidador
+
+## Row
+
+### Column
+
+:::{.card}
+<h1>REFIX</h1>
+<div style="font-size: 1.1em;">
+  <p><strong>AUM</strong>: 3.72 Bi</p>
+  <p><strong>Estratégias</strong>: 6</p>
+  <p><strong>Prateleira</strong>: 6</p>
+  <p><strong>Benchmark</strong>: IMA-B</p>
+  <p><strong>Data de Início</strong>: 29/09/2023</p>
+  <p><strong>Responsável</strong>: Leandro Andrioli</p>
+</div>
+:::
+
+### Column
+
+```{r, include=TRUE, echo = FALSE}
+      plot_ly(Cotas_Consolidadores, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = Cotas_Consolidadores$Data,
+          y = Cotas_Consolidadores$REFIX,
+          name = 'REFIX'
+        ) %>%
+        add_trace(
+          x = Cotas_Benchmarks$Data,
+          y = Cotas_Benchmarks$IMAB,
+          name = 'IMA-B'
+        ) %>%
+        layout(
+          title = 'Rentabilidade acumulada',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0.5, y = -0.2),
+          hovermode = 'compare'
+        )
+```
+
+## Row
+
+```{r, include=TRUE, echo = FALSE}
+      # Gráfico de patrimônio líquido para REFIX
+      plot_ly(PL_Consolidadores, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = PL_Consolidadores$Data,
+          y = PL_Consolidadores$REFIX,
+          name = 'REFIX'
+        ) %>%
+        layout(
+          title = 'Patrimônio Líquido',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Milhares'),
+          legend = list(orientation = 'h', x = 0.5, y = -0.2),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+      # Gráfico de drawdown para REFIX
+      plot_ly(Drawdown_consolidadores, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = Drawdown_consolidadores$Data,
+          y = Drawdown_consolidadores$REFIX_Drawdown,
+          name = 'REFIX'
+        ) %>%
+        layout(
+          title = 'Drawdown Acumulado',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percentual (%)'),
+          legend = list(orientation = 'h', x = 0.5, y = -0.2),
+          hovermode = 'compare'
+        )
+```
+
+# Sub- Estratégias
+
+## Row
+
+### Column
+
+### Column
+
+## Row
+

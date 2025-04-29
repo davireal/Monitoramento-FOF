@@ -1,0 +1,152 @@
+---
+format: dashboard
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+#[ Cotas_Benchmarks$Data > as.Date("29/09/2023", format = "%d/%m/%Y") ]
+```
+
+```{r, include=FALSE, echo = FALSE}
+library(httr)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(tidyverse)
+library(readxl)
+library(reactable)
+library(lubridate)
+library(quantmod)
+library(leaflet)
+```
+
+```{r, include=FALSE, echo = FALSE}
+Cotas_Consolidadores <- read_excel("C:/Users/dreal/Downloads/Cotas Consolidadores.xlsx", 
+col_types = c("date", "numeric", "numeric", "numeric", "numeric"), na = "0")
+
+colnames(Cotas_Consolidadores) <- c("Data", "FOF MM", "REFIX", "FOF RV", "FOF HEDGE")
+Cotas_Consolidadores <- Cotas_Consolidadores[, c("Data", "FOF HEDGE")]
+Cotas_Consolidadores <- Cotas_Consolidadores[Cotas_Consolidadores$Data > as.Date("2024-10-08"), ]
+
+PL_Consolidadores <- read_excel("C:/Users/dreal/Downloads/PL Consolidadores.xlsx", 
+col_types = c("date", "numeric", "numeric", "numeric", "numeric"), na = "0")
+
+colnames(PL_Consolidadores) <- c("Data", "FOF MM", "REFIX", "FOF RV", "FOF HEDGE")
+PL_Consolidadores <- PL_Consolidadores[, c("Data", "FOF HEDGE")]
+PL_Consolidadores <- PL_Consolidadores[PL_Consolidadores$Data > as.Date("2024-10-08"), ]
+
+Cotas_Benchmarks <- read_excel("C:/Users/dreal/Downloads/Cotas Benchmarks.xlsx", 
+col_types = c("date", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric"), na = "0")
+
+colnames(Cotas_Benchmarks) <- c("Data","CDI","DÓLAR","IBOV","IFMM","IHFA","IMAB","BSHY")
+Cotas_Benchmarks <- Cotas_Benchmarks[, c("Data", "BSHY","DÓLAR")]
+Cotas_Benchmarks <- Cotas_Benchmarks[Cotas_Benchmarks$Data > as.Date("2024-10-08"), ]
+``` 
+
+```{r, include=FALSE, echo = FALSE}
+
+# Função para calcular a série de drawdowns em múltiplas colunas
+calcular_drawdowns <- function(df, colunas) {
+  df_drawdowns <- df
+  for (coluna in colunas) {
+    max_cotas <- cummax(df[[coluna]])  # Máximos acumulados
+    df_drawdowns[[paste0(coluna, "_Drawdown")]] <- ((df[[coluna]] / max_cotas) - 1)*100  # Cálculo do drawdown
+  }
+  
+  df_drawdowns[is.na(df_drawdowns)] <- 0
+  
+  return(df_drawdowns)
+}
+
+Drawdown_consolidadores <- calcular_drawdowns(Cotas_Consolidadores, colunas = c("FOF HEDGE"))
+```
+
+# Consolidador
+
+## Row
+
+:::{.card}
+<h1>FOF HEDGE</h1>
+<div style="font-size: 1.1em;">
+  <p><strong>AUM</strong>: 400 Mi</p>
+  <p><strong>Sub-Estratégias</strong>: 2</p>
+  <p><strong>Estratégias</strong>: 2</p>
+  <p><strong>Prateleira</strong>: 5</p>
+  <p><strong>Benchmark</strong>: SHY</p>
+  <p><strong>Data de Início</strong>: 08/10/2024</p>
+  <p><strong>Responsável</strong>: Davi Real</p>
+</div>
+:::
+
+```{r, include=TRUE, echo = FALSE}
+      # Gráfico de rentabilidade acumulada FOF HEDGE
+      plot_ly(Cotas_Consolidadores, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = Cotas_Consolidadores$Data,
+          y = Cotas_Consolidadores$`FOF HEDGE`,
+          name = 'FOF HEDGE'
+        ) %>%
+        add_trace(
+          x = Cotas_Benchmarks$Data,
+          y = Cotas_Benchmarks$BSHY,
+          name = 'BSHY'
+        ) %>%
+        add_trace(
+          x = Cotas_Benchmarks$Data,
+          y = Cotas_Benchmarks$DÓLAR,
+          name = 'Dólar'
+        ) %>%
+        layout(
+          title = 'Rentabilidade acumulada',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percent'),
+          legend = list(orientation = 'h', x = 0.5, y = -0.2),
+          hovermode = 'compare'
+        )
+```
+
+## Row
+
+```{r, include=TRUE, echo = FALSE}
+      # Gráfico de patrimônio líquido para FOF HEDGE
+      plot_ly(PL_Consolidadores, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = PL_Consolidadores$Data,
+          y = PL_Consolidadores$`FOF HEDGE`,
+          name = 'FOF HEDGE'
+        ) %>%
+        layout(
+          title = 'Patrimônio Líquido',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Milhares'),
+          legend = list(orientation = 'h', x = 0.5, y = -0.2),
+          hovermode = 'compare'
+        )
+```
+
+```{r, include=TRUE, echo = FALSE}
+      # Gráfico de drawdown para FOF HEDGE
+      plot_ly(Drawdown_consolidadores, type = 'scatter', mode = 'lines') %>%
+        add_trace(
+          x = Drawdown_consolidadores$Data,
+          y = Drawdown_consolidadores$`FOF HEDGE_Drawdown`,
+          name = 'FOF HEDGE'
+        ) %>%
+        layout(
+          title = 'Drawdown Acumulado',
+          xaxis = list(title = 'Date'),
+          yaxis = list(title = 'Percentual (%)'),
+          legend = list(orientation = 'h', x = 0.5, y = -0.2),
+          hovermode = 'compare'
+        )
+```
+
+# Sub- Estratégias
+
+## Row
+
+### Column
+
+### Column
+
+## Row
